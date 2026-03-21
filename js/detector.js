@@ -237,8 +237,9 @@ class EyeDetector {
         // Calculate iris deviation
         const irisDeviation = this.calculateIrisDeviation(landmarks);
 
-        // Determine focus state
-        const isFocused = eyesOpen && facingForward && irisDeviation.centered;
+        // Determine focus state - primarily based on face orientation and eyes open
+        // Iris position is a bonus factor, not a strict requirement
+        const isFocused = eyesOpen && facingForward;
 
         // Calculate confidence score (0-1)
         const earScore = Math.min(avgEAR / 0.3, 1);
