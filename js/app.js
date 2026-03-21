@@ -22,6 +22,9 @@ class EyeFocusApp {
 
         // Yawn state
         this.isShowingYawnWarning = false;
+
+        // Eye closure state
+        this.isShowingEyeClosedWarning = false;
     }
 
     /**
@@ -267,6 +270,7 @@ class EyeFocusApp {
         this.ui.updateFocusIndicator('idle');
         this.ui.showNoFaceWarning(false);
         this.ui.showYawnWarning(false);
+        this.ui.showEyeClosedWarning(false);
         this.ui.showStatus('Tracking stopped', 'info');
     }
 
@@ -317,6 +321,9 @@ class EyeFocusApp {
         // Calculate focus state (includes yawn detection)
         const focusState = this.detector.calculateFocusState(landmarks);
 
+        // Update live metrics panel
+        this.ui.updateMetrics(focusState);
+
         // Update focus tracker
         const { stateChanged, newState } = this.focusTracker.updateState(focusState.isFocused);
 
@@ -331,14 +338,17 @@ class EyeFocusApp {
         // Handle yawn detection
         this.handleYawnState(focusState.isYawning);
 
+        // Handle eye closure detection
+        this.handleEyeClosedState(focusState.areEyesClosed);
+
         // Handle focus/distraction audio
         if (newState === 'distracted') {
             if (!this.audio.isAlertPlaying()) {
                 this.audio.startAlert();
             }
         } else if (newState === 'focused') {
-            // Only stop alert if not yawning
-            if (this.audio.isAlertPlaying() && !focusState.isYawning) {
+            // Only stop alert if not yawning and eyes are open
+            if (this.audio.isAlertPlaying() && !focusState.isYawning && !focusState.areEyesClosed) {
                 this.audio.stopAlert();
             }
         }
@@ -362,9 +372,35 @@ class EyeFocusApp {
             this.isShowingYawnWarning = false;
             this.ui.showYawnWarning(false);
 
-            // Stop alert if focused
+            // Stop alert if focused and eyes open
             const currentState = this.focusTracker.getState();
-            if (currentState === 'focused' && this.audio.isAlertPlaying()) {
+            if (currentState === 'focused' && this.audio.isAlertPlaying() && !this.isShowingEyeClosedWarning) {
+                this.audio.stopAlert();
+            }
+        }
+    }
+
+    /**
+     * Handle eye closure state changes
+     */
+    handleEyeClosedState(areEyesClosed) {
+        if (areEyesClosed && !this.isShowingEyeClosedWarning) {
+            // Eyes closed - show warning and play alert
+            this.isShowingEyeClosedWarning = true;
+            this.ui.showEyeClosedWarning(true);
+
+            // Play alert if not already playing
+            if (!this.audio.isAlertPlaying()) {
+                this.audio.startAlert();
+            }
+        } else if (!areEyesClosed && this.isShowingEyeClosedWarning) {
+            // Eyes opened - hide warning
+            this.isShowingEyeClosedWarning = false;
+            this.ui.showEyeClosedWarning(false);
+
+            // Stop alert if focused and not yawning
+            const currentState = this.focusTracker.getState();
+            if (currentState === 'focused' && this.audio.isAlertPlaying() && !this.isShowingYawnWarning) {
                 this.audio.stopAlert();
             }
         }

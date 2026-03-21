@@ -1,7 +1,7 @@
 /**
  * Detector Module
  * Handles MediaPipe Face Mesh integration and focus detection
- * Tracks HEAD ORIENTATION and YAWN DETECTION
+ * Tracks HEAD ORIENTATION, YAWN DETECTION, and EYE CLOSURE
  */
 class EyeDetector {
     constructor() {
@@ -23,20 +23,29 @@ class EyeDetector {
             UPPER_LIP: 13,
             LOWER_LIP: 14,
             MOUTH_LEFT: 78,
-            MOUTH_RIGHT: 308
+            MOUTH_RIGHT: 308,
+            // Eye landmarks for EAR calculation (6 points per eye)
+            LEFT_EYE: [33, 160, 158, 133, 153, 144],
+            RIGHT_EYE: [362, 385, 387, 263, 373, 380]
         };
 
         // Thresholds
         this.THRESHOLDS = {
             YAW_MAX: 25,        // Left/right head turn
             PITCH_MAX: 20,      // Up/down head tilt
-            YAWN_MAR: 0.55      // Mouth Aspect Ratio for yawn detection
+            YAWN_MAR: 0.55,     // Mouth Aspect Ratio for yawn detection
+            EYE_CLOSED_EAR: 0.18 // Eye Aspect Ratio below this = eyes closed
         };
 
         // Yawn detection state (debounce)
         this.yawnStartTime = null;
-        this.yawnDebounceMs = 800;  // Mouth must be open for 800ms to count as yawn
+        this.yawnDebounceMs = 800;
         this.isYawning = false;
+
+        // Eye closure detection state (debounce)
+        this.eyeClosedStartTime = null;
+        this.eyeClosedDebounceMs = 1500;  // Eyes must be closed for 1.5s to trigger
+        this.areEyesClosed = false;
     }
 
     /**
@@ -53,7 +62,7 @@ class EyeDetector {
 
                 this.faceMesh.setOptions({
                     maxNumFaces: 1,
-                    refineLandmarks: false,  // Don't need iris for head tracking
+                    refineLandmarks: false,
                     minDetectionConfidence: 0.5,
                     minTrackingConfidence: 0.5
                 });
@@ -101,8 +110,60 @@ class EyeDetector {
     }
 
     /**
+     * Calculate Eye Aspect Ratio (EAR)
+     * EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
+     * Lower EAR = more closed eyes
+     */
+    calculateEAR(landmarks, eyeIndices) {
+        const p1 = landmarks[eyeIndices[0]]; // Outer corner
+        const p2 = landmarks[eyeIndices[1]]; // Upper lid 1
+        const p3 = landmarks[eyeIndices[2]]; // Upper lid 2
+        const p4 = landmarks[eyeIndices[3]]; // Inner corner
+        const p5 = landmarks[eyeIndices[4]]; // Lower lid 2
+        const p6 = landmarks[eyeIndices[5]]; // Lower lid 1
+
+        // Vertical distances
+        const v1 = this.distance(p2, p6);
+        const v2 = this.distance(p3, p5);
+
+        // Horizontal distance
+        const h = this.distance(p1, p4);
+
+        if (h === 0) return 0;
+        return (v1 + v2) / (2.0 * h);
+    }
+
+    /**
+     * Check for eye closure with debounce
+     */
+    checkEyeClosure(landmarks) {
+        const leftEAR = this.calculateEAR(landmarks, this.LANDMARKS.LEFT_EYE);
+        const rightEAR = this.calculateEAR(landmarks, this.LANDMARKS.RIGHT_EYE);
+        const avgEAR = (leftEAR + rightEAR) / 2;
+
+        const eyesClosed = avgEAR < this.THRESHOLDS.EYE_CLOSED_EAR;
+        const now = Date.now();
+
+        if (eyesClosed) {
+            if (!this.eyeClosedStartTime) {
+                this.eyeClosedStartTime = now;
+            }
+            // Check if eyes have been closed long enough
+            if (now - this.eyeClosedStartTime >= this.eyeClosedDebounceMs) {
+                this.areEyesClosed = true;
+                return { areEyesClosed: true, ear: avgEAR };
+            }
+        } else {
+            // Eyes open - reset
+            this.eyeClosedStartTime = null;
+            this.areEyesClosed = false;
+        }
+
+        return { areEyesClosed: this.areEyesClosed, ear: avgEAR };
+    }
+
+    /**
      * Calculate head orientation (yaw and pitch)
-     * Uses nose position relative to face center
      */
     calculateHeadOrientation(landmarks) {
         const noseTip = landmarks[this.LANDMARKS.NOSE_TIP];
@@ -111,35 +172,27 @@ class EyeDetector {
         const chin = landmarks[this.LANDMARKS.CHIN];
         const forehead = landmarks[this.LANDMARKS.FOREHEAD];
 
-        // Face center (between eyes)
         const faceCenter = {
             x: (leftEye.x + rightEye.x) / 2,
             y: (leftEye.y + rightEye.y) / 2,
             z: (leftEye.z + rightEye.z) / 2
         };
 
-        // Calculate YAW (left-right rotation)
-        // When head turns left, nose moves left relative to eye center
-        // When head turns right, nose moves right relative to eye center
         const eyeDistance = Math.abs(rightEye.x - leftEye.x);
         const noseOffsetX = noseTip.x - faceCenter.x;
-        const yaw = (noseOffsetX / eyeDistance) * 90; // Normalize to degrees
+        const yaw = (noseOffsetX / eyeDistance) * 90;
 
-        // Calculate PITCH (up-down rotation)
-        // When head tilts down, nose moves down relative to eye center
-        // When head tilts up, nose moves up relative to eye center
         const faceHeight = Math.abs(chin.y - forehead.y);
         const noseOffsetY = noseTip.y - faceCenter.y;
-        const expectedNoseY = faceHeight * 0.15; // Nose is normally slightly below eyes
+        const expectedNoseY = faceHeight * 0.15;
         const pitchOffset = noseOffsetY - expectedNoseY;
-        const pitch = (pitchOffset / faceHeight) * 90; // Normalize to degrees
+        const pitch = (pitchOffset / faceHeight) * 90;
 
         return { yaw, pitch };
     }
 
     /**
      * Calculate Mouth Aspect Ratio (MAR) for yawn detection
-     * MAR = vertical distance / horizontal distance
      */
     calculateMouthAspectRatio(landmarks) {
         const upperLip = landmarks[this.LANDMARKS.UPPER_LIP];
@@ -147,20 +200,15 @@ class EyeDetector {
         const leftCorner = landmarks[this.LANDMARKS.MOUTH_LEFT];
         const rightCorner = landmarks[this.LANDMARKS.MOUTH_RIGHT];
 
-        // Vertical distance (mouth opening)
         const verticalDist = Math.abs(upperLip.y - lowerLip.y);
-
-        // Horizontal distance (mouth width)
         const horizontalDist = Math.abs(rightCorner.x - leftCorner.x);
 
         if (horizontalDist === 0) return 0;
-
         return verticalDist / horizontalDist;
     }
 
     /**
      * Check for yawn with debounce
-     * Returns true if mouth has been open wide for sustained period
      */
     checkYawn(landmarks) {
         const mar = this.calculateMouthAspectRatio(landmarks);
@@ -171,13 +219,11 @@ class EyeDetector {
             if (!this.yawnStartTime) {
                 this.yawnStartTime = now;
             }
-            // Check if mouth has been open long enough
             if (now - this.yawnStartTime >= this.yawnDebounceMs) {
                 this.isYawning = true;
                 return { isYawning: true, mar };
             }
         } else {
-            // Mouth closed - reset
             this.yawnStartTime = null;
             this.isYawning = false;
         }
@@ -187,13 +233,14 @@ class EyeDetector {
 
     /**
      * Calculate focus state from landmarks
-     * Includes head orientation AND yawn detection
+     * Includes head orientation, yawn detection, AND eye closure
      */
     calculateFocusState(landmarks) {
         if (!landmarks || landmarks.length === 0) {
             return {
                 isFocused: false,
                 isYawning: false,
+                areEyesClosed: false,
                 confidence: 0,
                 faceDetected: false,
                 metrics: null
@@ -203,14 +250,17 @@ class EyeDetector {
         // Calculate head orientation
         const orientation = this.calculateHeadOrientation(landmarks);
 
-        // Check if head is facing forward (within thresholds)
+        // Check if head is facing forward
         const facingScreen = Math.abs(orientation.yaw) < this.THRESHOLDS.YAW_MAX &&
                             Math.abs(orientation.pitch) < this.THRESHOLDS.PITCH_MAX;
 
         // Check for yawn
         const yawnResult = this.checkYawn(landmarks);
 
-        // Calculate confidence based on how centered the head is
+        // Check for eye closure
+        const eyeResult = this.checkEyeClosure(landmarks);
+
+        // Calculate confidence
         const yawConfidence = 1 - Math.min(Math.abs(orientation.yaw) / 45, 1);
         const pitchConfidence = 1 - Math.min(Math.abs(orientation.pitch) / 45, 1);
         const confidence = (yawConfidence + pitchConfidence) / 2;
@@ -218,13 +268,15 @@ class EyeDetector {
         return {
             isFocused: facingScreen,
             isYawning: yawnResult.isYawning,
+            areEyesClosed: eyeResult.areEyesClosed,
             confidence,
             faceDetected: true,
             metrics: {
                 yaw: orientation.yaw.toFixed(1),
                 pitch: orientation.pitch.toFixed(1),
                 facingScreen,
-                mouthAspectRatio: yawnResult.mar.toFixed(2)
+                mouthAspectRatio: yawnResult.mar.toFixed(2),
+                eyeAspectRatio: eyeResult.ear.toFixed(2)
             }
         };
     }

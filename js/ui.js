@@ -24,11 +24,25 @@ class UIManager {
             overlayCanvas: document.getElementById('overlay-canvas'),
             noFaceWarning: document.getElementById('no-face-warning'),
             yawnWarning: document.getElementById('yawn-warning'),
+            eyeClosedWarning: document.getElementById('eye-closed-warning'),
             // File upload elements
             alertUpload: document.getElementById('alert-upload'),
             uploadStatus: document.getElementById('upload-status'),
             clearUpload: document.getElementById('clear-upload'),
-            videoOverlay: document.getElementById('video-overlay')
+            videoOverlay: document.getElementById('video-overlay'),
+            // Live metrics elements
+            metricYaw: document.getElementById('metric-yaw'),
+            metricPitch: document.getElementById('metric-pitch'),
+            metricEAR: document.getElementById('metric-ear'),
+            metricMAR: document.getElementById('metric-mar'),
+            yawBar: document.getElementById('yaw-bar'),
+            pitchBar: document.getElementById('pitch-bar'),
+            earBar: document.getElementById('ear-bar'),
+            marBar: document.getElementById('mar-bar'),
+            eyeStatus: document.getElementById('eye-status'),
+            mouthStatus: document.getElementById('mouth-status'),
+            statusFocus: document.getElementById('status-focus'),
+            statusConfidence: document.getElementById('status-confidence')
         };
 
         // Debug view state
@@ -364,6 +378,113 @@ class UIManager {
     }
 
     /**
+     * Show/hide eye closed warning
+     */
+    showEyeClosedWarning(show) {
+        if (this.elements.eyeClosedWarning) {
+            this.elements.eyeClosedWarning.classList.toggle('hidden', !show);
+        }
+    }
+
+    /**
+     * Update live metrics panel
+     */
+    updateMetrics(focusState) {
+        if (!focusState || !focusState.metrics) return;
+
+        const metrics = focusState.metrics;
+        const thresholds = {
+            yawMax: 25,
+            pitchMax: 20,
+            earMin: 0.18,
+            marMax: 0.55
+        };
+
+        // Update yaw
+        if (this.elements.metricYaw) {
+            const yaw = parseFloat(metrics.yaw);
+            this.elements.metricYaw.textContent = `${yaw > 0 ? '+' : ''}${metrics.yaw}°`;
+            this.elements.metricYaw.className = 'metric-value ' +
+                (Math.abs(yaw) > thresholds.yawMax ? 'danger' : 'good');
+        }
+        if (this.elements.yawBar) {
+            const yaw = parseFloat(metrics.yaw);
+            const percent = Math.min(Math.abs(yaw) / 45 * 100, 100);
+            this.elements.yawBar.style.width = `${percent}%`;
+            this.elements.yawBar.className = 'metric-bar yaw-bar' +
+                (Math.abs(yaw) > thresholds.yawMax ? ' danger' : '');
+        }
+
+        // Update pitch
+        if (this.elements.metricPitch) {
+            const pitch = parseFloat(metrics.pitch);
+            this.elements.metricPitch.textContent = `${pitch > 0 ? '+' : ''}${metrics.pitch}°`;
+            this.elements.metricPitch.className = 'metric-value ' +
+                (Math.abs(pitch) > thresholds.pitchMax ? 'danger' : 'good');
+        }
+        if (this.elements.pitchBar) {
+            const pitch = parseFloat(metrics.pitch);
+            const percent = Math.min(Math.abs(pitch) / 45 * 100, 100);
+            this.elements.pitchBar.style.width = `${percent}%`;
+            this.elements.pitchBar.className = 'metric-bar pitch-bar' +
+                (Math.abs(pitch) > thresholds.pitchMax ? ' danger' : '');
+        }
+
+        // Update EAR (Eye Aspect Ratio)
+        if (this.elements.metricEAR) {
+            const ear = parseFloat(metrics.eyeAspectRatio);
+            this.elements.metricEAR.textContent = metrics.eyeAspectRatio;
+            this.elements.metricEAR.className = 'metric-value ' +
+                (ear < thresholds.earMin ? 'danger' : 'good');
+        }
+        if (this.elements.earBar) {
+            const ear = parseFloat(metrics.eyeAspectRatio);
+            const percent = Math.min(ear / 0.4 * 100, 100);
+            this.elements.earBar.style.width = `${percent}%`;
+            this.elements.earBar.className = 'metric-bar ear-bar' +
+                (ear < thresholds.earMin ? ' danger' : '');
+        }
+        if (this.elements.eyeStatus) {
+            const ear = parseFloat(metrics.eyeAspectRatio);
+            this.elements.eyeStatus.textContent = ear < thresholds.earMin ? 'Eyes: CLOSED' : 'Eyes: Open';
+            this.elements.eyeStatus.className = 'metric-status ' +
+                (ear < thresholds.earMin ? 'closed' : 'open');
+        }
+
+        // Update MAR (Mouth Aspect Ratio)
+        if (this.elements.metricMAR) {
+            const mar = parseFloat(metrics.mouthAspectRatio);
+            this.elements.metricMAR.textContent = metrics.mouthAspectRatio;
+            this.elements.metricMAR.className = 'metric-value ' +
+                (mar > thresholds.marMax ? 'danger' : 'good');
+        }
+        if (this.elements.marBar) {
+            const mar = parseFloat(metrics.mouthAspectRatio);
+            const percent = Math.min(mar / 1.0 * 100, 100);
+            this.elements.marBar.style.width = `${percent}%`;
+            this.elements.marBar.className = 'metric-bar mar-bar' +
+                (mar > thresholds.marMax ? ' danger' : '');
+        }
+        if (this.elements.mouthStatus) {
+            const mar = parseFloat(metrics.mouthAspectRatio);
+            this.elements.mouthStatus.textContent = mar > thresholds.marMax ? 'Mouth: YAWNING' : 'Mouth: Normal';
+            this.elements.mouthStatus.className = 'metric-status ' +
+                (mar > thresholds.marMax ? 'closed' : 'open');
+        }
+
+        // Update status
+        if (this.elements.statusFocus) {
+            this.elements.statusFocus.textContent = focusState.isFocused ? 'Focus: ON' : 'Focus: OFF';
+            this.elements.statusFocus.className = 'status-indicator ' +
+                (focusState.isFocused ? 'focused' : 'distracted');
+        }
+        if (this.elements.statusConfidence) {
+            const conf = Math.round(focusState.confidence * 100);
+            this.elements.statusConfidence.textContent = `Confidence: ${conf}%`;
+        }
+    }
+
+    /**
      * Reset UI to initial state
      */
     reset() {
@@ -380,6 +501,7 @@ class UIManager {
         this.clearStatus();
         this.showNoFaceWarning(false);
         this.showYawnWarning(false);
+        this.showEyeClosedWarning(false);
 
         if (this.canvasCtx && this.elements.overlayCanvas) {
             this.canvasCtx.clearRect(
