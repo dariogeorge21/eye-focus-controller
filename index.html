@@ -19,26 +19,97 @@
             <div class="pulse-ring"></div>
         </div>
 
-        <!-- Camera Section -->
+        <!-- Camera Section with Live Metrics -->
         <div class="camera-section">
-            <div class="camera-container">
-                <video id="camera-feed" autoplay playsinline muted></video>
-                <canvas id="overlay-canvas"></canvas>
-                <div id="no-face-warning" class="no-face-warning hidden">
-                    No face detected
+            <div class="camera-wrapper">
+                <div class="camera-container">
+                    <video id="camera-feed" autoplay playsinline muted></video>
+                    <canvas id="overlay-canvas"></canvas>
+                    <div id="no-face-warning" class="no-face-warning hidden">
+                        No face detected
+                    </div>
+                    <!-- Yawn Warning Overlay -->
+                    <div id="yawn-warning" class="yawn-warning hidden">
+                        YOU ARE SLEEPY
+                    </div>
+                    <!-- Eye Closed Warning Overlay -->
+                    <div id="eye-closed-warning" class="eye-closed-warning hidden">
+                        WAKE UP!
+                    </div>
                 </div>
-                <!-- Yawn Warning Overlay -->
-                <div id="yawn-warning" class="yawn-warning hidden">
-                    YOU ARE SLEEPY
+                <div class="camera-controls">
+                    <button id="toggle-debug" class="btn secondary" disabled>
+                        Show Debug View
+                    </button>
+                    <button id="pip-btn" class="btn secondary" disabled>
+                        Enable PiP
+                    </button>
                 </div>
             </div>
-            <div class="camera-controls">
-                <button id="toggle-debug" class="btn secondary" disabled>
-                    Show Debug View
-                </button>
-                <button id="pip-btn" class="btn secondary" disabled>
-                    Enable PiP
-                </button>
+
+            <!-- Live Metrics Panel -->
+            <div id="metrics-panel" class="metrics-panel">
+                <h3>Live Metrics</h3>
+
+                <div class="metric-group">
+                    <h4>Head Orientation</h4>
+                    <div class="metric-row">
+                        <span class="metric-label">Yaw (L/R):</span>
+                        <span id="metric-yaw" class="metric-value">--</span>
+                        <span class="metric-threshold">|&lt;25°</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Pitch (U/D):</span>
+                        <span id="metric-pitch" class="metric-value">--</span>
+                        <span class="metric-threshold">|&lt;20°</span>
+                    </div>
+                    <div class="metric-bar-container">
+                        <div id="yaw-bar" class="metric-bar yaw-bar"></div>
+                    </div>
+                    <div class="metric-bar-container">
+                        <div id="pitch-bar" class="metric-bar pitch-bar"></div>
+                    </div>
+                </div>
+
+                <div class="metric-group">
+                    <h4>Eye Detection</h4>
+                    <div class="metric-row">
+                        <span class="metric-label">Eye Aspect Ratio:</span>
+                        <span id="metric-ear" class="metric-value">--</span>
+                        <span class="metric-threshold">&gt;0.18</span>
+                    </div>
+                    <div class="metric-bar-container">
+                        <div id="ear-bar" class="metric-bar ear-bar"></div>
+                    </div>
+                    <div class="metric-status" id="eye-status">Eyes: --</div>
+                </div>
+
+                <div class="metric-group">
+                    <h4>Mouth Detection</h4>
+                    <div class="metric-row">
+                        <span class="metric-label">Mouth Aspect Ratio:</span>
+                        <span id="metric-mar" class="metric-value">--</span>
+                        <span class="metric-threshold">&lt;0.55</span>
+                    </div>
+                    <div class="metric-bar-container">
+                        <div id="mar-bar" class="metric-bar mar-bar"></div>
+                    </div>
+                    <div class="metric-status" id="mouth-status">Mouth: --</div>
+                </div>
+
+                <div class="metric-group">
+                    <h4>Status</h4>
+                    <div class="metric-status-row">
+                        <span id="status-focus" class="status-indicator">Focus: --</span>
+                    </div>
+                    <div class="metric-status-row">
+                        <span id="status-confidence" class="status-indicator">Confidence: --%</span>
+                    </div>
+                </div>
+
+                <div class="threshold-info">
+                    <small>Thresholds can be adjusted in detector.js</small>
+                </div>
             </div>
         </div>
 
