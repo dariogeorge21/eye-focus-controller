@@ -1,6 +1,7 @@
 /**
  * UI Module
  * Handles DOM updates and visual elements
+ * Includes file upload, PiP button, and yawn warning
  */
 class UIManager {
     constructor() {
@@ -17,10 +18,17 @@ class UIManager {
             startBtn: document.getElementById('start-btn'),
             resetBtn: document.getElementById('reset-btn'),
             toggleDebug: document.getElementById('toggle-debug'),
+            pipBtn: document.getElementById('pip-btn'),
             statusMessage: document.getElementById('status-message'),
             cameraFeed: document.getElementById('camera-feed'),
             overlayCanvas: document.getElementById('overlay-canvas'),
-            noFaceWarning: document.getElementById('no-face-warning')
+            noFaceWarning: document.getElementById('no-face-warning'),
+            yawnWarning: document.getElementById('yawn-warning'),
+            // File upload elements
+            alertUpload: document.getElementById('alert-upload'),
+            uploadStatus: document.getElementById('upload-status'),
+            clearUpload: document.getElementById('clear-upload'),
+            videoOverlay: document.getElementById('video-overlay')
         };
 
         // Debug view state
@@ -35,7 +43,6 @@ class UIManager {
 
     /**
      * Initialize UI event listeners
-     * @param {Object} callbacks - Event callbacks
      */
     init(callbacks) {
         // Start button
@@ -54,11 +61,35 @@ class UIManager {
                 this.toggleDebugView();
             });
         }
+
+        // PiP button
+        if (this.elements.pipBtn && callbacks.onPiP) {
+            this.elements.pipBtn.addEventListener('click', callbacks.onPiP);
+        }
+
+        // File upload
+        if (this.elements.alertUpload && callbacks.onFileUpload) {
+            this.elements.alertUpload.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (file) {
+                    callbacks.onFileUpload(file);
+                }
+            });
+        }
+
+        // Clear upload button
+        if (this.elements.clearUpload && callbacks.onClearUpload) {
+            this.elements.clearUpload.addEventListener('click', () => {
+                callbacks.onClearUpload();
+                if (this.elements.alertUpload) {
+                    this.elements.alertUpload.value = '';
+                }
+            });
+        }
     }
 
     /**
      * Update focus indicator display
-     * @param {string} state - 'focused', 'distracted', 'initializing', or 'idle'
      */
     updateFocusIndicator(state) {
         const indicator = this.elements.focusIndicator;
@@ -66,10 +97,8 @@ class UIManager {
 
         if (!indicator || !text) return;
 
-        // Remove all state classes
         indicator.classList.remove('focused', 'distracted', 'initializing');
 
-        // Add appropriate class and text
         switch (state) {
             case 'focused':
                 indicator.classList.add('focused');
@@ -90,43 +119,36 @@ class UIManager {
 
     /**
      * Update statistics display
-     * @param {Object} stats - Statistics object from FocusTracker
      */
     updateStats(stats) {
-        // Min focus time
         if (this.elements.minFocus) {
             this.elements.minFocus.textContent = stats.minFocusTime !== null
                 ? this.formatTime(stats.minFocusTime)
                 : '--:--';
         }
 
-        // Max focus time
         if (this.elements.maxFocus) {
             this.elements.maxFocus.textContent = stats.maxFocusTime > 0
                 ? this.formatTime(stats.maxFocusTime)
                 : '--:--';
         }
 
-        // Average focus time
         if (this.elements.avgFocus) {
             this.elements.avgFocus.textContent = stats.avgFocusTime > 0
                 ? this.formatTime(stats.avgFocusTime)
                 : '--:--';
         }
 
-        // Attention span
         if (this.elements.attentionSpan) {
             this.elements.attentionSpan.textContent = stats.attentionSpan !== null
                 ? this.formatTime(stats.attentionSpan)
                 : '--:--';
         }
 
-        // Current session
         if (this.elements.currentSession) {
             this.elements.currentSession.textContent = this.formatTime(stats.currentSessionTime || 0);
         }
 
-        // Session count
         if (this.elements.sessionCount) {
             this.elements.sessionCount.textContent = stats.sessionCount;
         }
@@ -134,8 +156,6 @@ class UIManager {
 
     /**
      * Format milliseconds to MM:SS
-     * @param {number} ms - Time in milliseconds
-     * @returns {string} Formatted time string
      */
     formatTime(ms) {
         if (ms === null || ms === undefined || ms < 0) return '--:--';
@@ -149,8 +169,6 @@ class UIManager {
 
     /**
      * Show status message
-     * @param {string} message - Message text
-     * @param {string} type - 'error', 'success', or 'info'
      */
     showStatus(message, type = 'info') {
         if (!this.elements.statusMessage) return;
@@ -170,7 +188,6 @@ class UIManager {
 
     /**
      * Update button states
-     * @param {boolean} isRunning - Whether tracking is running
      */
     updateButtons(isRunning) {
         if (this.elements.startBtn) {
@@ -184,6 +201,40 @@ class UIManager {
 
         if (this.elements.toggleDebug) {
             this.elements.toggleDebug.disabled = !isRunning;
+        }
+
+        if (this.elements.pipBtn) {
+            this.elements.pipBtn.disabled = !isRunning;
+        }
+    }
+
+    /**
+     * Update PiP button state
+     */
+    updatePiPButton(isPiPActive) {
+        if (this.elements.pipBtn) {
+            this.elements.pipBtn.textContent = isPiPActive ? 'Exit PiP' : 'Enable PiP';
+            this.elements.pipBtn.classList.toggle('active', isPiPActive);
+        }
+    }
+
+    /**
+     * Update upload status display
+     */
+    updateUploadStatus(filename, type = null) {
+        if (this.elements.uploadStatus) {
+            if (filename) {
+                const icon = type === 'video' ? '🎬' : '🔊';
+                this.elements.uploadStatus.textContent = `${icon} ${filename}`;
+                this.elements.uploadStatus.classList.add('loaded');
+            } else {
+                this.elements.uploadStatus.textContent = 'No file selected';
+                this.elements.uploadStatus.classList.remove('loaded');
+            }
+        }
+
+        if (this.elements.clearUpload) {
+            this.elements.clearUpload.classList.toggle('hidden', !filename);
         }
     }
 
@@ -199,7 +250,6 @@ class UIManager {
                 : 'Show Debug View';
         }
 
-        // Clear canvas if debug disabled
         if (!this.debugEnabled && this.canvasCtx && this.elements.overlayCanvas) {
             this.canvasCtx.clearRect(
                 0, 0,
@@ -211,9 +261,6 @@ class UIManager {
 
     /**
      * Draw face mesh overlay on canvas
-     * @param {Array} landmarks - Face landmarks from MediaPipe
-     * @param {number} videoWidth - Video width
-     * @param {number} videoHeight - Video height
      */
     drawFaceMesh(landmarks, videoWidth, videoHeight) {
         if (!this.debugEnabled || !this.canvasCtx || !this.elements.overlayCanvas) return;
@@ -222,23 +269,19 @@ class UIManager {
         const canvas = this.elements.overlayCanvas;
         const ctx = this.canvasCtx;
 
-        // Set canvas size to match video
         if (canvas.width !== videoWidth || canvas.height !== videoHeight) {
             canvas.width = videoWidth;
             canvas.height = videoHeight;
         }
 
-        // Clear previous frame
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // Draw face mesh points
         ctx.fillStyle = 'rgba(0, 255, 136, 0.6)';
 
         landmarks.forEach((point, index) => {
             const x = point.x * canvas.width;
             const y = point.y * canvas.height;
 
-            // Draw larger points for key landmarks
             const isKeyPoint = this.isKeyLandmark(index);
             const radius = isKeyPoint ? 3 : 1;
 
@@ -247,30 +290,23 @@ class UIManager {
             ctx.fill();
         });
 
-        // Draw connections for face outline, eyes, and iris
         this.drawFaceConnections(ctx, landmarks, canvas.width, canvas.height);
     }
 
     /**
      * Check if landmark index is a key point
-     * @param {number} index
-     * @returns {boolean}
      */
     isKeyLandmark(index) {
         const keyIndices = [
-            33, 133, 362, 263,  // Eye corners
+            33, 133, 362, 263,   // Eye corners
             1, 152, 10,          // Nose, chin, forehead
-            468, 473             // Iris centers
+            13, 14, 78, 308      // Mouth landmarks
         ];
         return keyIndices.includes(index);
     }
 
     /**
      * Draw face mesh connections
-     * @param {CanvasRenderingContext2D} ctx
-     * @param {Array} landmarks
-     * @param {number} width
-     * @param {number} height
      */
     drawFaceConnections(ctx, landmarks, width, height) {
         ctx.strokeStyle = 'rgba(74, 144, 217, 0.4)';
@@ -284,36 +320,14 @@ class UIManager {
         const rightEye = [362, 385, 387, 263, 373, 380, 362];
         this.drawPath(ctx, landmarks, rightEye, width, height);
 
-        // Draw iris circles
-        ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
-        ctx.lineWidth = 2;
-
-        // Left iris
-        if (landmarks[468]) {
-            const leftIris = landmarks[468];
-            const leftRadius = this.getIrisRadius(landmarks, [469, 470, 471, 472]);
-            ctx.beginPath();
-            ctx.arc(leftIris.x * width, leftIris.y * height, leftRadius * width, 0, 2 * Math.PI);
-            ctx.stroke();
-        }
-
-        // Right iris
-        if (landmarks[473]) {
-            const rightIris = landmarks[473];
-            const rightRadius = this.getIrisRadius(landmarks, [474, 475, 476, 477]);
-            ctx.beginPath();
-            ctx.arc(rightIris.x * width, rightIris.y * height, rightRadius * width, 0, 2 * Math.PI);
-            ctx.stroke();
-        }
+        // Mouth outline
+        ctx.strokeStyle = 'rgba(255, 100, 100, 0.6)';
+        const mouth = [78, 13, 308, 14, 78];
+        this.drawPath(ctx, landmarks, mouth, width, height);
     }
 
     /**
      * Draw a path connecting landmarks
-     * @param {CanvasRenderingContext2D} ctx
-     * @param {Array} landmarks
-     * @param {Array} indices
-     * @param {number} width
-     * @param {number} height
      */
     drawPath(ctx, landmarks, indices, width, height) {
         ctx.beginPath();
@@ -332,35 +346,20 @@ class UIManager {
     }
 
     /**
-     * Calculate iris radius from surrounding landmarks
-     * @param {Array} landmarks
-     * @param {Array} irisIndices
-     * @returns {number}
-     */
-    getIrisRadius(landmarks, irisIndices) {
-        const center = landmarks[irisIndices[0] - 1]; // Iris center is index before
-        if (!center) return 0.01;
-
-        let totalDist = 0;
-        irisIndices.forEach(idx => {
-            const point = landmarks[idx];
-            if (point) {
-                const dx = point.x - center.x;
-                const dy = point.y - center.y;
-                totalDist += Math.sqrt(dx * dx + dy * dy);
-            }
-        });
-
-        return totalDist / irisIndices.length;
-    }
-
-    /**
      * Show/hide no face warning
-     * @param {boolean} show
      */
     showNoFaceWarning(show) {
         if (this.elements.noFaceWarning) {
             this.elements.noFaceWarning.classList.toggle('hidden', !show);
+        }
+    }
+
+    /**
+     * Show/hide yawn warning
+     */
+    showYawnWarning(show) {
+        if (this.elements.yawnWarning) {
+            this.elements.yawnWarning.classList.toggle('hidden', !show);
         }
     }
 
@@ -380,8 +379,8 @@ class UIManager {
         this.updateButtons(false);
         this.clearStatus();
         this.showNoFaceWarning(false);
+        this.showYawnWarning(false);
 
-        // Clear canvas
         if (this.canvasCtx && this.elements.overlayCanvas) {
             this.canvasCtx.clearRect(
                 0, 0,
