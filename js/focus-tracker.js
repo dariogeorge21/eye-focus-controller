@@ -5,12 +5,12 @@
 class FocusTracker {
     constructor() {
         // State management
-        this.currentState = 'idle'; // idle, focused, distracted
-        this.previousState = 'idle';
+        this.currentState = 'focused'; // Start assuming user is focused
+        this.previousState = 'focused';
         this.stateStartTime = null;
 
-        // Debounce settings
-        this.debounceMs = 500;
+        // Debounce settings (reduced for faster response)
+        this.debounceMs = 300;
         this.pendingState = null;
         this.pendingStateTime = null;
 
@@ -35,7 +35,7 @@ class FocusTracker {
      */
     start() {
         this.stats.trackingStartTime = Date.now();
-        this.currentState = 'idle';
+        this.currentState = 'focused';  // Assume focused at start
         this.stateStartTime = Date.now();
     }
 
@@ -183,8 +183,8 @@ class FocusTracker {
      * Reset all statistics
      */
     reset() {
-        this.currentState = 'idle';
-        this.previousState = 'idle';
+        this.currentState = 'focused';
+        this.previousState = 'focused';
         this.stateStartTime = null;
         this.pendingState = null;
         this.pendingStateTime = null;

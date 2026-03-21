@@ -1,6 +1,7 @@
 /**
  * Detector Module
  * Handles MediaPipe Face Mesh integration and focus detection
+ * Simplified to track HEAD ORIENTATION only (not eyes)
  */
 class EyeDetector {
     constructor() {
@@ -11,35 +12,25 @@ class EyeDetector {
 
         // Landmark indices for MediaPipe Face Mesh
         this.LANDMARKS = {
-            // Left eye contour
-            LEFT_EYE: [33, 160, 158, 133, 153, 144],
-            // Right eye contour
-            RIGHT_EYE: [362, 385, 387, 263, 373, 380],
-            // Iris landmarks (requires refineLandmarks: true)
-            LEFT_IRIS: [468, 469, 470, 471, 472],
-            RIGHT_IRIS: [473, 474, 475, 476, 477],
-            // Face orientation reference points
             NOSE_TIP: 1,
             CHIN: 152,
             LEFT_EYE_OUTER: 33,
             RIGHT_EYE_OUTER: 263,
-            LEFT_EYE_INNER: 133,
-            RIGHT_EYE_INNER: 362,
-            FOREHEAD: 10
+            FOREHEAD: 10,
+            LEFT_CHEEK: 234,
+            RIGHT_CHEEK: 454
         };
 
-        // Focus detection thresholds (relaxed for normal use)
+        // Head orientation thresholds (in degrees)
+        // If head turns more than this, user is "distracted"
         this.THRESHOLDS = {
-            EAR_MIN: 0.12,           // Minimum eye aspect ratio (eyes open)
-            YAW_MAX: 35,             // Maximum face yaw angle (degrees)
-            PITCH_MAX: 35,           // Maximum face pitch angle (degrees)
-            IRIS_DEVIATION_MAX: 0.6  // Maximum iris deviation from center
+            YAW_MAX: 25,    // Left/right head turn
+            PITCH_MAX: 20   // Up/down head tilt
         };
     }
 
     /**
      * Initialize MediaPipe Face Mesh
-     * @returns {Promise<void>}
      */
     async init() {
         return new Promise((resolve, reject) => {
@@ -52,7 +43,7 @@ class EyeDetector {
 
                 this.faceMesh.setOptions({
                     maxNumFaces: 1,
-                    refineLandmarks: true,  // Enable iris tracking
+                    refineLandmarks: false,  // Don't need iris for head tracking
                     minDetectionConfidence: 0.5,
                     minTrackingConfidence: 0.5
                 });
@@ -76,7 +67,6 @@ class EyeDetector {
 
     /**
      * Set callback for detection results
-     * @param {Function} callback
      */
     setResultsCallback(callback) {
         this.onResults = callback;
@@ -84,7 +74,6 @@ class EyeDetector {
 
     /**
      * Send video frame to detector
-     * @param {HTMLVideoElement} video
      */
     async detect(video) {
         if (!this.isInitialized || !this.faceMesh) return;
@@ -92,36 +81,7 @@ class EyeDetector {
     }
 
     /**
-     * Calculate Eye Aspect Ratio (EAR)
-     * EAR = (|p2-p6| + |p3-p5|) / (2 * |p1-p4|)
-     * @param {Array} landmarks - Face landmarks array
-     * @param {Array} eyeIndices - Eye landmark indices
-     * @returns {number} EAR value
-     */
-    calculateEAR(landmarks, eyeIndices) {
-        const p1 = landmarks[eyeIndices[0]];
-        const p2 = landmarks[eyeIndices[1]];
-        const p3 = landmarks[eyeIndices[2]];
-        const p4 = landmarks[eyeIndices[3]];
-        const p5 = landmarks[eyeIndices[4]];
-        const p6 = landmarks[eyeIndices[5]];
-
-        // Vertical distances
-        const v1 = this.distance(p2, p6);
-        const v2 = this.distance(p3, p5);
-
-        // Horizontal distance
-        const h = this.distance(p1, p4);
-
-        if (h === 0) return 0;
-        return (v1 + v2) / (2.0 * h);
-    }
-
-    /**
-     * Calculate distance between two 3D points
-     * @param {Object} p1
-     * @param {Object} p2
-     * @returns {number}
+     * Calculate distance between two points
      */
     distance(p1, p2) {
         const dx = p1.x - p2.x;
@@ -131,87 +91,45 @@ class EyeDetector {
     }
 
     /**
-     * Calculate face orientation (yaw, pitch, roll)
-     * @param {Array} landmarks
-     * @returns {{yaw: number, pitch: number, roll: number}}
+     * Calculate head orientation (yaw and pitch)
+     * Uses nose position relative to face center
      */
-    calculateFaceOrientation(landmarks) {
+    calculateHeadOrientation(landmarks) {
         const noseTip = landmarks[this.LANDMARKS.NOSE_TIP];
-        const chin = landmarks[this.LANDMARKS.CHIN];
         const leftEye = landmarks[this.LANDMARKS.LEFT_EYE_OUTER];
         const rightEye = landmarks[this.LANDMARKS.RIGHT_EYE_OUTER];
+        const chin = landmarks[this.LANDMARKS.CHIN];
         const forehead = landmarks[this.LANDMARKS.FOREHEAD];
 
-        // Calculate yaw (left-right rotation)
-        const eyeCenter = {
+        // Face center (between eyes)
+        const faceCenter = {
             x: (leftEye.x + rightEye.x) / 2,
-            y: (leftEye.y + rightEye.y) / 2
-        };
-        const yaw = Math.atan2(noseTip.x - eyeCenter.x, noseTip.z - ((leftEye.z + rightEye.z) / 2)) * (180 / Math.PI);
-
-        // Calculate pitch (up-down rotation)
-        const faceHeight = this.distance(forehead, chin);
-        const noseOffset = noseTip.y - eyeCenter.y;
-        const pitch = Math.asin(noseOffset / (faceHeight * 0.5)) * (180 / Math.PI);
-
-        // Calculate roll (tilt)
-        const roll = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x) * (180 / Math.PI);
-
-        return { yaw, pitch, roll };
-    }
-
-    /**
-     * Calculate iris deviation from eye center
-     * @param {Array} landmarks
-     * @returns {{left: number, right: number, centered: boolean}}
-     */
-    calculateIrisDeviation(landmarks) {
-        // Left iris center
-        const leftIrisCenter = landmarks[this.LANDMARKS.LEFT_IRIS[0]];
-        const leftEyeInner = landmarks[this.LANDMARKS.LEFT_EYE_INNER];
-        const leftEyeOuter = landmarks[this.LANDMARKS.LEFT_EYE_OUTER];
-
-        // Right iris center
-        const rightIrisCenter = landmarks[this.LANDMARKS.RIGHT_IRIS[0]];
-        const rightEyeInner = landmarks[this.LANDMARKS.RIGHT_EYE_INNER];
-        const rightEyeOuter = landmarks[this.LANDMARKS.RIGHT_EYE_OUTER];
-
-        // Calculate eye centers
-        const leftEyeCenter = {
-            x: (leftEyeInner.x + leftEyeOuter.x) / 2,
-            y: (leftEyeInner.y + leftEyeOuter.y) / 2
-        };
-        const rightEyeCenter = {
-            x: (rightEyeInner.x + rightEyeOuter.x) / 2,
-            y: (rightEyeInner.y + rightEyeOuter.y) / 2
+            y: (leftEye.y + rightEye.y) / 2,
+            z: (leftEye.z + rightEye.z) / 2
         };
 
-        // Calculate eye widths for normalization
-        const leftEyeWidth = this.distance(leftEyeInner, leftEyeOuter);
-        const rightEyeWidth = this.distance(rightEyeInner, rightEyeOuter);
+        // Calculate YAW (left-right rotation)
+        // When head turns left, nose moves left relative to eye center
+        // When head turns right, nose moves right relative to eye center
+        const eyeDistance = Math.abs(rightEye.x - leftEye.x);
+        const noseOffsetX = noseTip.x - faceCenter.x;
+        const yaw = (noseOffsetX / eyeDistance) * 90; // Normalize to degrees
 
-        // Calculate normalized deviation
-        const leftDeviation = leftEyeWidth > 0
-            ? this.distance(leftIrisCenter, leftEyeCenter) / leftEyeWidth
-            : 0;
-        const rightDeviation = rightEyeWidth > 0
-            ? this.distance(rightIrisCenter, rightEyeCenter) / rightEyeWidth
-            : 0;
+        // Calculate PITCH (up-down rotation)
+        // When head tilts down, nose moves down relative to eye center
+        // When head tilts up, nose moves up relative to eye center
+        const faceHeight = Math.abs(chin.y - forehead.y);
+        const noseOffsetY = noseTip.y - faceCenter.y;
+        const expectedNoseY = faceHeight * 0.15; // Nose is normally slightly below eyes
+        const pitchOffset = noseOffsetY - expectedNoseY;
+        const pitch = (pitchOffset / faceHeight) * 90; // Normalize to degrees
 
-        const avgDeviation = (leftDeviation + rightDeviation) / 2;
-
-        return {
-            left: leftDeviation,
-            right: rightDeviation,
-            average: avgDeviation,
-            centered: avgDeviation < this.THRESHOLDS.IRIS_DEVIATION_MAX
-        };
+        return { yaw, pitch };
     }
 
     /**
      * Calculate focus state from landmarks
-     * @param {Array} landmarks
-     * @returns {{isFocused: boolean, confidence: number, metrics: Object}}
+     * SIMPLE: Just check if head is facing screen
      */
     calculateFocusState(landmarks) {
         if (!landmarks || landmarks.length === 0) {
@@ -223,58 +141,32 @@ class EyeDetector {
             };
         }
 
-        // Calculate Eye Aspect Ratio
-        const leftEAR = this.calculateEAR(landmarks, this.LANDMARKS.LEFT_EYE);
-        const rightEAR = this.calculateEAR(landmarks, this.LANDMARKS.RIGHT_EYE);
-        const avgEAR = (leftEAR + rightEAR) / 2;
-        const eyesOpen = avgEAR > this.THRESHOLDS.EAR_MIN;
+        // Calculate head orientation
+        const orientation = this.calculateHeadOrientation(landmarks);
 
-        // Calculate face orientation
-        const orientation = this.calculateFaceOrientation(landmarks);
-        const facingForward = Math.abs(orientation.yaw) < this.THRESHOLDS.YAW_MAX &&
-                             Math.abs(orientation.pitch) < this.THRESHOLDS.PITCH_MAX;
+        // Check if head is facing forward (within thresholds)
+        const facingScreen = Math.abs(orientation.yaw) < this.THRESHOLDS.YAW_MAX &&
+                            Math.abs(orientation.pitch) < this.THRESHOLDS.PITCH_MAX;
 
-        // Calculate iris deviation
-        const irisDeviation = this.calculateIrisDeviation(landmarks);
-
-        // Determine focus state - primarily based on face orientation and eyes open
-        // Iris position is a bonus factor, not a strict requirement
-        const isFocused = eyesOpen && facingForward;
-
-        // Calculate confidence score (0-1)
-        const earScore = Math.min(avgEAR / 0.3, 1);
-        const yawScore = 1 - Math.min(Math.abs(orientation.yaw) / 45, 1);
-        const pitchScore = 1 - Math.min(Math.abs(orientation.pitch) / 45, 1);
-        const irisScore = 1 - Math.min(irisDeviation.average / 0.5, 1);
-
-        const confidence = (earScore * 0.2 + yawScore * 0.3 + pitchScore * 0.2 + irisScore * 0.3);
+        // Calculate confidence based on how centered the head is
+        const yawConfidence = 1 - Math.min(Math.abs(orientation.yaw) / 45, 1);
+        const pitchConfidence = 1 - Math.min(Math.abs(orientation.pitch) / 45, 1);
+        const confidence = (yawConfidence + pitchConfidence) / 2;
 
         return {
-            isFocused,
+            isFocused: facingScreen,
             confidence,
             faceDetected: true,
             metrics: {
-                ear: avgEAR,
-                eyesOpen,
-                orientation,
-                facingForward,
-                irisDeviation: irisDeviation.average,
-                irisCentered: irisDeviation.centered
+                yaw: orientation.yaw.toFixed(1),
+                pitch: orientation.pitch.toFixed(1),
+                facingScreen
             }
         };
     }
 
     /**
-     * Get last detection results
-     * @returns {Object|null}
-     */
-    getLastResults() {
-        return this.lastResults;
-    }
-
-    /**
      * Get landmarks from last results
-     * @returns {Array|null}
      */
     getLandmarks() {
         if (!this.lastResults || !this.lastResults.multiFaceLandmarks ||

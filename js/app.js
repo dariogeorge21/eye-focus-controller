@@ -190,11 +190,14 @@ class EyeFocusApp {
         const dims = this.camera.getDimensions();
         this.ui.drawFaceMesh(landmarks, dims.width, dims.height);
 
-        // Handle state change for audio
-        if (stateChanged) {
-            if (newState === 'distracted') {
+        // DYNAMIC AUDIO: Directly control based on current state
+        // Alarm plays when distracted, stops immediately when focused
+        if (newState === 'distracted') {
+            if (!this.audio.isAlertPlaying()) {
                 this.audio.startAlert();
-            } else if (newState === 'focused') {
+            }
+        } else if (newState === 'focused') {
+            if (this.audio.isAlertPlaying()) {
                 this.audio.stopAlert();
             }
         }
