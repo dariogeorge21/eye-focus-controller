@@ -1,7 +1,7 @@
 /**
  * Detector Module
  * Handles MediaPipe Face Mesh integration and focus detection
- * Simplified to track HEAD ORIENTATION only (not eyes)
+ * Tracks HEAD ORIENTATION and YAWN DETECTION
  */
 class EyeDetector {
     constructor() {
@@ -18,15 +18,25 @@ class EyeDetector {
             RIGHT_EYE_OUTER: 263,
             FOREHEAD: 10,
             LEFT_CHEEK: 234,
-            RIGHT_CHEEK: 454
+            RIGHT_CHEEK: 454,
+            // Mouth landmarks for yawn detection
+            UPPER_LIP: 13,
+            LOWER_LIP: 14,
+            MOUTH_LEFT: 78,
+            MOUTH_RIGHT: 308
         };
 
-        // Head orientation thresholds (in degrees)
-        // If head turns more than this, user is "distracted"
+        // Thresholds
         this.THRESHOLDS = {
-            YAW_MAX: 25,    // Left/right head turn
-            PITCH_MAX: 20   // Up/down head tilt
+            YAW_MAX: 25,        // Left/right head turn
+            PITCH_MAX: 20,      // Up/down head tilt
+            YAWN_MAR: 0.55      // Mouth Aspect Ratio for yawn detection
         };
+
+        // Yawn detection state (debounce)
+        this.yawnStartTime = null;
+        this.yawnDebounceMs = 800;  // Mouth must be open for 800ms to count as yawn
+        this.isYawning = false;
     }
 
     /**
@@ -128,13 +138,62 @@ class EyeDetector {
     }
 
     /**
+     * Calculate Mouth Aspect Ratio (MAR) for yawn detection
+     * MAR = vertical distance / horizontal distance
+     */
+    calculateMouthAspectRatio(landmarks) {
+        const upperLip = landmarks[this.LANDMARKS.UPPER_LIP];
+        const lowerLip = landmarks[this.LANDMARKS.LOWER_LIP];
+        const leftCorner = landmarks[this.LANDMARKS.MOUTH_LEFT];
+        const rightCorner = landmarks[this.LANDMARKS.MOUTH_RIGHT];
+
+        // Vertical distance (mouth opening)
+        const verticalDist = Math.abs(upperLip.y - lowerLip.y);
+
+        // Horizontal distance (mouth width)
+        const horizontalDist = Math.abs(rightCorner.x - leftCorner.x);
+
+        if (horizontalDist === 0) return 0;
+
+        return verticalDist / horizontalDist;
+    }
+
+    /**
+     * Check for yawn with debounce
+     * Returns true if mouth has been open wide for sustained period
+     */
+    checkYawn(landmarks) {
+        const mar = this.calculateMouthAspectRatio(landmarks);
+        const mouthOpen = mar > this.THRESHOLDS.YAWN_MAR;
+        const now = Date.now();
+
+        if (mouthOpen) {
+            if (!this.yawnStartTime) {
+                this.yawnStartTime = now;
+            }
+            // Check if mouth has been open long enough
+            if (now - this.yawnStartTime >= this.yawnDebounceMs) {
+                this.isYawning = true;
+                return { isYawning: true, mar };
+            }
+        } else {
+            // Mouth closed - reset
+            this.yawnStartTime = null;
+            this.isYawning = false;
+        }
+
+        return { isYawning: this.isYawning, mar };
+    }
+
+    /**
      * Calculate focus state from landmarks
-     * SIMPLE: Just check if head is facing screen
+     * Includes head orientation AND yawn detection
      */
     calculateFocusState(landmarks) {
         if (!landmarks || landmarks.length === 0) {
             return {
                 isFocused: false,
+                isYawning: false,
                 confidence: 0,
                 faceDetected: false,
                 metrics: null
@@ -148,6 +207,9 @@ class EyeDetector {
         const facingScreen = Math.abs(orientation.yaw) < this.THRESHOLDS.YAW_MAX &&
                             Math.abs(orientation.pitch) < this.THRESHOLDS.PITCH_MAX;
 
+        // Check for yawn
+        const yawnResult = this.checkYawn(landmarks);
+
         // Calculate confidence based on how centered the head is
         const yawConfidence = 1 - Math.min(Math.abs(orientation.yaw) / 45, 1);
         const pitchConfidence = 1 - Math.min(Math.abs(orientation.pitch) / 45, 1);
@@ -155,12 +217,14 @@ class EyeDetector {
 
         return {
             isFocused: facingScreen,
+            isYawning: yawnResult.isYawning,
             confidence,
             faceDetected: true,
             metrics: {
                 yaw: orientation.yaw.toFixed(1),
                 pitch: orientation.pitch.toFixed(1),
-                facingScreen
+                facingScreen,
+                mouthAspectRatio: yawnResult.mar.toFixed(2)
             }
         };
     }
