@@ -1,6 +1,7 @@
 /**
  * Eye Focus Controller - Main Application
  * Orchestrates all modules and manages the detection loop
+ * Includes PiP mode and yawn detection
  */
 class EyeFocusApp {
     constructor() {
@@ -12,8 +13,15 @@ class EyeFocusApp {
 
         this.isRunning = false;
         this.animationFrameId = null;
+        this.backgroundInterval = null;
         this.lastFaceDetected = true;
         this.noFaceTimeout = null;
+
+        // PiP state
+        this.isPiPActive = false;
+
+        // Yawn state
+        this.isShowingYawnWarning = false;
     }
 
     /**
@@ -24,7 +32,10 @@ class EyeFocusApp {
         this.ui = new UIManager();
         this.ui.init({
             onStart: () => this.toggleTracking(),
-            onReset: () => this.resetStats()
+            onReset: () => this.resetStats(),
+            onPiP: () => this.togglePiP(),
+            onFileUpload: (file) => this.handleFileUpload(file),
+            onClearUpload: () => this.handleClearUpload()
         });
 
         // Initialize focus tracker
@@ -39,7 +50,108 @@ class EyeFocusApp {
         // Initialize camera manager
         this.camera = new CameraManager();
 
+        // Set up visibility change handler for background operation
+        this.setupVisibilityHandler();
+
         this.ui.showStatus('Ready. Click Start to begin tracking.', 'info');
+    }
+
+    /**
+     * Set up visibility change handler for background operation
+     */
+    setupVisibilityHandler() {
+        document.addEventListener('visibilitychange', () => {
+            if (!this.isRunning) return;
+
+            if (document.hidden && !this.isPiPActive) {
+                // Tab hidden and no PiP - switch to interval-based detection
+                this.startBackgroundDetection();
+            } else {
+                // Tab visible or PiP active - use requestAnimationFrame
+                this.stopBackgroundDetection();
+            }
+        });
+    }
+
+    /**
+     * Start background detection using setInterval
+     */
+    startBackgroundDetection() {
+        if (this.backgroundInterval) return;
+
+        // Cancel rAF loop
+        if (this.animationFrameId) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        // Use setInterval for background (throttled by browser to ~1 FPS)
+        this.backgroundInterval = setInterval(() => {
+            if (this.isRunning) {
+                const video = this.camera.getVideoElement();
+                if (video && video.readyState >= 2) {
+                    this.detector.detect(video);
+                }
+            }
+        }, 500);
+    }
+
+    /**
+     * Stop background detection and resume rAF
+     */
+    stopBackgroundDetection() {
+        if (this.backgroundInterval) {
+            clearInterval(this.backgroundInterval);
+            this.backgroundInterval = null;
+        }
+
+        // Resume rAF loop if running
+        if (this.isRunning && !this.animationFrameId) {
+            this.runDetectionLoop();
+        }
+    }
+
+    /**
+     * Toggle Picture-in-Picture mode
+     */
+    async togglePiP() {
+        const video = this.camera.getVideoElement();
+        if (!video) return;
+
+        try {
+            if (this.isPiPActive) {
+                await document.exitPictureInPicture();
+            } else {
+                await video.requestPictureInPicture();
+            }
+        } catch (error) {
+            console.error('PiP error:', error);
+            this.ui.showStatus('PiP not supported or permission denied', 'error');
+        }
+    }
+
+    /**
+     * Handle file upload for custom alert
+     */
+    async handleFileUpload(file) {
+        try {
+            this.ui.showStatus('Loading custom alert...', 'info');
+            const result = await this.audio.loadCustomMedia(file);
+            this.ui.updateUploadStatus(result.name, result.type);
+            this.ui.showStatus(`Custom ${result.type} loaded: ${result.name}`, 'success');
+        } catch (error) {
+            console.error('Upload error:', error);
+            this.ui.showStatus('Failed to load custom alert', 'error');
+        }
+    }
+
+    /**
+     * Handle clearing custom upload
+     */
+    handleClearUpload() {
+        this.audio.clearCustomMedia();
+        this.ui.updateUploadStatus(null);
+        this.ui.showStatus('Custom alert cleared, using default beep', 'info');
     }
 
     /**
@@ -63,6 +175,22 @@ class EyeFocusApp {
 
             // Initialize camera
             await this.camera.init();
+
+            // Set up PiP event listeners
+            const video = this.camera.getVideoElement();
+            video.addEventListener('enterpictureinpicture', () => {
+                this.isPiPActive = true;
+                this.ui.updatePiPButton(true);
+                this.stopBackgroundDetection(); // PiP keeps video active
+            });
+            video.addEventListener('leavepictureinpicture', () => {
+                this.isPiPActive = false;
+                this.ui.updatePiPButton(false);
+                if (document.hidden) {
+                    this.startBackgroundDetection();
+                }
+            });
+
             this.ui.showStatus('Loading face detection model...', 'info');
 
             // Initialize audio (must be after user interaction)
@@ -107,6 +235,17 @@ class EyeFocusApp {
             this.animationFrameId = null;
         }
 
+        // Stop background interval
+        if (this.backgroundInterval) {
+            clearInterval(this.backgroundInterval);
+            this.backgroundInterval = null;
+        }
+
+        // Exit PiP if active
+        if (this.isPiPActive && document.pictureInPictureElement) {
+            document.exitPictureInPicture().catch(() => {});
+        }
+
         // Stop camera
         if (this.camera) {
             this.camera.stop();
@@ -127,6 +266,7 @@ class EyeFocusApp {
         this.ui.updateButtons(false);
         this.ui.updateFocusIndicator('idle');
         this.ui.showNoFaceWarning(false);
+        this.ui.showYawnWarning(false);
         this.ui.showStatus('Tracking stopped', 'info');
     }
 
@@ -148,7 +288,6 @@ class EyeFocusApp {
         const video = this.camera.getVideoElement();
 
         if (video && video.readyState >= 2) {
-            // Send frame to detector
             this.detector.detect(video);
         }
 
@@ -158,7 +297,6 @@ class EyeFocusApp {
 
     /**
      * Process detection results
-     * @param {Object} results - MediaPipe Face Mesh results
      */
     processResults(results) {
         if (!this.isRunning) return;
@@ -176,7 +314,7 @@ class EyeFocusApp {
         // Face detected - clear no face warning
         this.handleFaceDetected();
 
-        // Calculate focus state
+        // Calculate focus state (includes yawn detection)
         const focusState = this.detector.calculateFocusState(landmarks);
 
         // Update focus tracker
@@ -190,14 +328,43 @@ class EyeFocusApp {
         const dims = this.camera.getDimensions();
         this.ui.drawFaceMesh(landmarks, dims.width, dims.height);
 
-        // DYNAMIC AUDIO: Directly control based on current state
-        // Alarm plays when distracted, stops immediately when focused
+        // Handle yawn detection
+        this.handleYawnState(focusState.isYawning);
+
+        // Handle focus/distraction audio
         if (newState === 'distracted') {
             if (!this.audio.isAlertPlaying()) {
                 this.audio.startAlert();
             }
         } else if (newState === 'focused') {
-            if (this.audio.isAlertPlaying()) {
+            // Only stop alert if not yawning
+            if (this.audio.isAlertPlaying() && !focusState.isYawning) {
+                this.audio.stopAlert();
+            }
+        }
+    }
+
+    /**
+     * Handle yawn state changes
+     */
+    handleYawnState(isYawning) {
+        if (isYawning && !this.isShowingYawnWarning) {
+            // Yawn detected - show warning and play alert
+            this.isShowingYawnWarning = true;
+            this.ui.showYawnWarning(true);
+
+            // Play alert for yawn if not already playing
+            if (!this.audio.isAlertPlaying()) {
+                this.audio.startAlert();
+            }
+        } else if (!isYawning && this.isShowingYawnWarning) {
+            // Yawn ended - hide warning
+            this.isShowingYawnWarning = false;
+            this.ui.showYawnWarning(false);
+
+            // Stop alert if focused
+            const currentState = this.focusTracker.getState();
+            if (currentState === 'focused' && this.audio.isAlertPlaying()) {
                 this.audio.stopAlert();
             }
         }
@@ -210,7 +377,6 @@ class EyeFocusApp {
         if (this.lastFaceDetected) {
             this.lastFaceDetected = false;
 
-            // Show warning after short delay
             this.noFaceTimeout = setTimeout(() => {
                 if (!this.lastFaceDetected && this.isRunning) {
                     this.ui.showNoFaceWarning(true);
