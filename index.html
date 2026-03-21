@@ -27,12 +27,37 @@
                 <div id="no-face-warning" class="no-face-warning hidden">
                     No face detected
                 </div>
+                <!-- Yawn Warning Overlay -->
+                <div id="yawn-warning" class="yawn-warning hidden">
+                    YOU ARE SLEEPY
+                </div>
             </div>
             <div class="camera-controls">
                 <button id="toggle-debug" class="btn secondary" disabled>
                     Show Debug View
                 </button>
+                <button id="pip-btn" class="btn secondary" disabled>
+                    Enable PiP
+                </button>
             </div>
+        </div>
+
+        <!-- Custom Alert Upload -->
+        <div class="upload-section">
+            <h3>Custom Alert (Audio/Video)</h3>
+            <div class="upload-controls">
+                <label class="upload-label">
+                    <input type="file" id="alert-upload" accept="audio/*,video/*">
+                    <span class="upload-btn">Choose File</span>
+                </label>
+                <span id="upload-status" class="upload-status">No file selected</span>
+                <button id="clear-upload" class="btn small secondary hidden">Clear</button>
+            </div>
+        </div>
+
+        <!-- Video Alert Popup Overlay -->
+        <div id="video-overlay" class="video-overlay hidden">
+            <video id="alert-video" loop></video>
         </div>
 
         <!-- Statistics Panel -->

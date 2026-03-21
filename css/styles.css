@@ -177,10 +177,135 @@ body {
     z-index: 10;
 }
 
+/* Yawn Warning Overlay */
+.yawn-warning {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, rgba(255, 100, 0, 0.95), rgba(255, 50, 50, 0.95));
+    color: #fff;
+    padding: 20px 40px;
+    border-radius: 12px;
+    font-size: 1.5rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    z-index: 15;
+    animation: yawn-pulse 0.8s ease-in-out infinite;
+    box-shadow: 0 0 30px rgba(255, 100, 0, 0.6);
+}
+
+@keyframes yawn-pulse {
+    0%, 100% {
+        transform: translate(-50%, -50%) scale(1);
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.05);
+    }
+}
+
 .camera-controls {
     display: flex;
     justify-content: center;
     gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* Upload Section */
+.upload-section {
+    background: var(--bg-secondary);
+    border-radius: var(--border-radius);
+    padding: 20px;
+}
+
+.upload-section h3 {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+}
+
+.upload-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.upload-label {
+    cursor: pointer;
+}
+
+.upload-label input[type="file"] {
+    display: none;
+}
+
+.upload-btn {
+    display: inline-block;
+    padding: 10px 20px;
+    background: var(--bg-tertiary);
+    color: var(--text-primary);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.upload-btn:hover {
+    background: var(--accent);
+    color: white;
+}
+
+.upload-status {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.upload-status.loaded {
+    color: var(--focus-color);
+}
+
+/* Video Alert Overlay */
+.video-overlay {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    width: 320px;
+    max-width: 40vw;
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    animation: slide-in 0.3s ease-out;
+}
+
+.video-overlay video {
+    width: 100%;
+    display: block;
+}
+
+@keyframes slide-in {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+/* Small Button Variant */
+.btn.small {
+    padding: 8px 16px;
+    font-size: 0.8rem;
+}
+
+/* PiP Button Active State */
+.btn.active {
+    background: var(--focus-color);
+    color: #000;
 }
 
 /* Statistics Panel */
