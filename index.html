@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eye Focus Controller</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <h1>Eye Focus Controller</h1>
+        </header>
+
+        <!-- Main Focus Indicator -->
+        <div id="focus-indicator" class="focus-indicator">
+            <span class="indicator-text">Click Start to Begin</span>
+            <div class="pulse-ring"></div>
+        </div>
+
+        <!-- Camera Section -->
+        <div class="camera-section">
+            <div class="camera-container">
+                <video id="camera-feed" autoplay playsinline muted></video>
+                <canvas id="overlay-canvas"></canvas>
+                <div id="no-face-warning" class="no-face-warning hidden">
+                    No face detected
+                </div>
+            </div>
+            <div class="camera-controls">
+                <button id="toggle-debug" class="btn secondary" disabled>
+                    Show Debug View
+                </button>
+            </div>
+        </div>
+
+        <!-- Statistics Panel -->
+        <div class="stats-panel">
+            <h2>Focus Statistics</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Minimum Focus</span>
+                    <span id="min-focus" class="stat-value">--:--</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Longest Focus</span>
+                    <span id="max-focus" class="stat-value">--:--</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Average Focus</span>
+                    <span id="avg-focus" class="stat-value">--:--</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Attention Span</span>
+                    <span id="attention-span" class="stat-value">--:--</span>
+                </div>
+            </div>
+            <div class="session-info">
+                <span>Current session: <span id="current-session">00:00</span></span>
+                <span>Total focus sessions: <span id="session-count">0</span></span>
+            </div>
+        </div>
+
+        <!-- Control Buttons -->
+        <div class="controls">
+            <button id="start-btn" class="btn primary">Start Tracking</button>
+            <button id="reset-btn" class="btn secondary" disabled>Reset Stats</button>
+        </div>
+
+        <!-- Status Messages -->
+        <div id="status-message" class="status-message"></div>
+    </div>
+
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1675466862/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4.1633559619/face_mesh.js" crossorigin="anonymous"></script>
+
+    <!-- Application Scripts -->
+    <script src="js/camera.js"></script>
+    <script src="js/detector.js"></script>
+    <script src="js/focus-tracker.js"></script>
+    <script src="js/audio.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
